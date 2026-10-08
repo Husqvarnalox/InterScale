@@ -1,0 +1,19 @@
+services:
+  inferscale:
+    build: .
+    image: inferscale
+    ports:
+      - "8000:8000"
+    environment:
+      INFERSCALE_MODEL: ${INFERSCALE_MODEL:-Qwen/Qwen2.5-0.5B-Instruct}
+    volumes:
+      - hf-cache:/home/inferscale/.cache/huggingface
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+volumes:
+  hf-cache:
