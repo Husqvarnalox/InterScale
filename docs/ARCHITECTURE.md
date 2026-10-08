@@ -91,3 +91,25 @@ batch; there is no sharing between requests, no prefix reuse and no paging.
 | Model error in a batch | batch's requests `FAILED`; non-stream → 500, stream → an `error` SSE event then `[DONE]` |
 | Engine stopped | in-flight requests `FAILED`, new submits → 503 |
 | Model load failure | `inferscale serve` prints a clear error and exits 1 before binding the port |
+
+## Model compatibility and assumptions
+
+`HFModelRunner` loads models through `AutoModelForCausalLM` and assumes:
+
+- a decoder-only causal LM whose `forward` accepts `attention_mask`, `position_ids` and
+  `past_key_values`, and returns a cache with `batch_select_indices` (the Transformers
+  `DynamicCache`);
+- a tokenizer with an EOS token (the pad token falls back to EOS), and left padding handled by
+  the runner itself, not the tokenizer;
+- chat prompts built with the tokenizer's chat template, else the `<|role|>` fallback in
+  `model/chat.py`.
+
+Only a random-weight Llama (`builtin:tiny`) is exercised in tests; other architectures are
+untested.
+
+## Known costs of the v0.1 design
+
+- Left-padding columns remain in the cache until the batch ends, so mixed prompt lengths waste
+  memory and attention compute. There is no memory-aware admission, so large batches with long
+  contexts can run out of memory.
+- Sampling is per row; only the final token-id transfer is batched.

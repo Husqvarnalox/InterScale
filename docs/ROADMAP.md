@@ -1,20 +1,19 @@
 # Roadmap
 
-Nothing here is implemented in v0.1.
+Nothing below is implemented in v0.1. No dates are promised.
 
 ## v0.2
-- True continuous batching with iteration-level admission (merge new prefills into a running
-  batch, right-sized KV cache merging instead of left-padding).
-- Prefix caching.
-- Improved KV management (memory-aware admission, trimming dead padding).
-- CUDA graph experiments for the decode step.
+- Iteration-level continuous admission: merge new prefills into a running batch.
+- Memory-aware KV admission control.
+- Cache compaction to reduce padding.
+- Broader model compatibility (cache implementations, tokenizers without EOS).
 
 ## v0.3
-- Paged KV cache with a block allocator.
-- Custom CUDA kernels.
-- Speculative decoding.
-- LoRA.
-- Quantization experiments.
+- Prefix caching.
+- Paged KV cache exploration.
+- Quantization.
+- Speculative decoding experiments.
 
 ## Later
-- Tensor parallelism, multi-GPU, distributed serving.
+- Custom CUDA kernels.
+- Tensor parallelism and multi-GPU.

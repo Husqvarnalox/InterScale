@@ -126,8 +126,9 @@ async def test_model_failure_fails_batch_but_engine_survives():
     runner = ScriptedRunner(scripts={1: [ord("a")] * 10}, fail_on_decode=True)
     engine = make_engine(runner)
     await engine.start()
-    with pytest.raises(EngineError, match="boom"):
+    with pytest.raises(EngineError, match="inference failed") as info:
         await submit(engine, 1).result()
+    assert "boom" not in str(info.value)  # internal detail stays in the logs
     runner.fail_on_decode = False
     runner.scripts[1] = [ord("o"), EOS]
     assert (await submit(engine, 1).result()).text == "o"

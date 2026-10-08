@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import inspect
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 import torch
@@ -58,12 +58,6 @@ class HFBatchState:
         self.attention_mask = self.attention_mask.index_select(0, idx)
         self.positions = self.positions.index_select(0, idx)
         self.cache.batch_select_indices(idx)
-
-
-@dataclass
-class ForwardTimings:
-    last_seconds: float = 0.0
-    history: list[float] = field(default_factory=list)
 
 
 class HFModelRunner:

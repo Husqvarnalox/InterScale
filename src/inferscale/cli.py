@@ -12,7 +12,7 @@ from inferscale.config import ConfigError, ServerConfig
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="inferscale", description="InferScale: a small educational LLM inference server."
+        prog="inferscale", description="InferScale: a small LLM inference runtime."
     )
     parser.add_argument("--version", action="version", version=f"inferscale {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)

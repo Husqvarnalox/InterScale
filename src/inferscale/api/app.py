@@ -6,7 +6,6 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -45,9 +44,10 @@ def create_app(config: ServerConfig, runner: Runner | None = None) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
-        problems: list[Any] = [
-            f"{'.'.join(str(p) for p in e['loc'] if p != 'body')}: {e['msg']}" for e in exc.errors()
-        ]
+        problems: list[str] = []
+        for e in exc.errors():
+            field = ".".join(str(p) for p in e["loc"] if p != "body")
+            problems.append(f"{field}: {e['msg']}" if field else str(e["msg"]))
         return JSONResponse(
             error_body("; ".join(problems), "invalid_request_error", "invalid_request"),
             status_code=400,

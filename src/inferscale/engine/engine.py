@@ -167,16 +167,14 @@ class InferenceEngine:
                     m.tpot.observe((request.finished_at - request.first_token_at) / (generated - 1))
         fields: dict[str, Any] = {
             "request_id": request.request_id,
+            "status": status,
             "prompt_tokens": len(request.prompt_token_ids),
             "generated_tokens": generated,
-            "latency": latency,
-            "ttft": ttft,
+            "latency_ms": None if latency is None else round(latency * 1000, 1),
+            "ttft_ms": None if ttft is None else round(ttft * 1000, 1),
         }
-        if status == "failed":
-            fields["error"] = repr(request.error)
-            log_event(logger, logging.ERROR, "request failed", **fields)
-        else:
-            log_event(logger, logging.INFO, f"request {status}", **fields)
+        level = logging.ERROR if status == "failed" else logging.INFO
+        log_event(logger, level, f"request {status}", **fields)
 
     async def _in_thread(self, fn: Any, *args: Any) -> Any:
         return await asyncio.get_running_loop().run_in_executor(self._executor, fn, *args)
@@ -212,9 +210,11 @@ class InferenceEngine:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.exception("batch failed")
+                logger.exception("batch failed", extra={"fields": {"batch_size": len(batch)}})
+                failure = EngineError("inference failed; see server logs")
+                failure.__cause__ = exc
                 for req in batch:
-                    if req.fail(exc):
+                    if req.fail(failure):
                         self._on_terminal(req, "failed")
             finally:
                 self._sync_gauges(0)

@@ -62,7 +62,7 @@ def load_runner(config: ServerConfig) -> HFModelRunner:
 
     try:
         hf_tok = AutoTokenizer.from_pretrained(config.model)
-        model: Any = AutoModelForCausalLM.from_pretrained(config.model, dtype=dtype)
+        model: Any = AutoModelForCausalLM.from_pretrained(config.model, torch_dtype=dtype)
         tokenizer = HFTokenizer(hf_tok)
     except Exception as exc:
         raise ModelLoadError(

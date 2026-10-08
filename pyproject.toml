@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "inferscale"
 dynamic = ["version"]
-description = "A small educational LLM inference runtime built from first principles with PyTorch."
+description = "A small LLM inference runtime built from first principles with PyTorch."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

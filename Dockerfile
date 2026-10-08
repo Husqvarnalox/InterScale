@@ -17,7 +17,8 @@ ENV PATH="/opt/venv/bin:$PATH" \
     INFERSCALE_HOST=0.0.0.0 \
     INFERSCALE_DEVICE=cpu
 RUN groupadd --system --gid 10001 inferscale \
- && useradd --system --uid 10001 --gid 10001 --create-home inferscale
+ && useradd --system --uid 10001 --gid 10001 --create-home inferscale \
+ && install -d -o 10001 -g 10001 /home/inferscale/.cache/huggingface
 COPY --from=builder /opt/venv /opt/venv
 USER 10001:10001
 EXPOSE 8000

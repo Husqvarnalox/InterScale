@@ -24,8 +24,9 @@ from inferscale.api.schemas import (
     now,
 )
 from inferscale.engine.engine import EngineClosedError, InferenceEngine, PromptTooLongError
-from inferscale.engine.request import EngineError, GenerationRequest, StreamEvent
+from inferscale.engine.request import EngineError, GenerationRequest, SamplingParams, StreamEvent
 from inferscale.engine.scheduler import QueueFullError
+from inferscale.model.chat import ChatMessage
 
 DEFAULT_COMPLETION_MAX_TOKENS = 16
 DEFAULT_CHAT_MAX_TOKENS = 256
@@ -43,7 +44,7 @@ def _error(status: int, message: str, type_: str, code: str | None = None) -> JS
 
 
 def _submit(
-    engine: InferenceEngine, prompt: str, add_special_tokens: bool, params: Any
+    engine: InferenceEngine, prompt: str, add_special_tokens: bool, params: SamplingParams
 ) -> GenerationRequest | JSONResponse:
     ids = engine.tokenizer.encode(prompt, add_special_tokens=add_special_tokens)
     try:
@@ -107,6 +108,22 @@ async def _stream(
     yield _sse("[DONE]")
 
 
+def _sse_response(
+    engine: InferenceEngine,
+    gen: GenerationRequest,
+    chunk: Callable[[StreamEvent, bool], dict[str, Any]],
+    usage_chunk: Callable[[dict[str, int]], dict[str, Any]] | None,
+) -> StreamingResponse:
+    headers = {
+        "X-Request-Id": gen.request_id,
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(
+        _stream(engine, gen, chunk, usage_chunk), media_type="text/event-stream", headers=headers
+    )
+
+
 @router.get("/health")
 async def health(request: Request) -> Response:
     if not _engine(request).is_running:
@@ -162,11 +179,7 @@ async def completions(body: CompletionRequest, request: Request) -> Response:
         def usage_chunk(usage: dict[str, int]) -> dict[str, Any]:
             return {**base([]), "usage": usage}
 
-        return StreamingResponse(
-            _stream(engine, gen, chunk, usage_chunk if include_usage else None),
-            media_type="text/event-stream",
-            headers={"X-Request-Id": gen.request_id, "Cache-Control": "no-cache"},
-        )
+        return _sse_response(engine, gen, chunk, usage_chunk if include_usage else None)
 
     try:
         result = await _await_or_cancel(request, engine, gen)
@@ -183,9 +196,9 @@ async def completions(body: CompletionRequest, request: Request) -> Response:
 async def chat_completions(body: ChatCompletionRequest, request: Request) -> Response:
     engine = _engine(request)
     params = body.to_sampling_params(DEFAULT_CHAT_MAX_TOKENS)
-    messages = [{"role": m.role, "content": m.content} for m in body.messages]
+    messages = [ChatMessage(role=m.role, content=m.content) for m in body.messages]
     try:
-        prompt = engine.tokenizer.format_chat(messages)  # type: ignore[arg-type]
+        prompt = engine.tokenizer.format_chat(messages)
     except Exception as exc:
         return _error(400, f"could not apply chat template: {exc}", "invalid_request_error")
     # Chat templates already contain any special tokens (e.g. BOS).
@@ -216,11 +229,7 @@ async def chat_completions(body: ChatCompletionRequest, request: Request) -> Res
         def usage_chunk(usage: dict[str, int]) -> dict[str, Any]:
             return {**base([]), "usage": usage}
 
-        return StreamingResponse(
-            _stream(engine, gen, chunk, usage_chunk if include_usage else None),
-            media_type="text/event-stream",
-            headers={"X-Request-Id": gen.request_id, "Cache-Control": "no-cache"},
-        )
+        return _sse_response(engine, gen, chunk, usage_chunk if include_usage else None)
 
     try:
         result = await _await_or_cancel(request, engine, gen)

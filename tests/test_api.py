@@ -181,6 +181,7 @@ async def test_engine_failure_is_reported_as_500():
     _, client, ctx = await make_client(runner)
     r = await client.post("/v1/completions", json={"prompt": "hi", "temperature": 0})
     assert r.status_code == 500 and r.json()["error"]["code"] == "engine_error"
+    assert "boom" not in r.text and "Traceback" not in r.text
     await client.aclose()
     await ctx.__aexit__(None, None, None)
 
