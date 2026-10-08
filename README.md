@@ -1,23 +1,56 @@
 # InferScale
 
-A small open-source LLM inference runtime built from first principles with PyTorch.
+**A PyTorch LLM inference runtime built from first principles: hand-written decode loop, dynamic batching, KV caching, streaming, and an OpenAI-compatible API.**
 
-InferScale makes modern LLM serving internals understandable: request queueing, batched
-token-by-token decoding, KV caching, streaming, cancellation and inference observability,
-without hiding them behind a production inference framework. The decode loop is hand-written;
-Hugging Face Transformers is used only for model/tokenizer loading and the model forward pass.
+[![CI](https://github.com/Husqvarnalox/InterScale/actions/workflows/ci.yml/badge.svg)](https://github.com/Husqvarnalox/InterScale/actions/workflows/ci.yml)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+![License Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-green)
 
-## What is InferScale?
+<p align="center">
+  <img src="docs/assets/streaming.gif" alt="curl streaming tokens from InferScale" width="820">
+</p>
 
-An OpenAI-style HTTP server (`/v1/completions`, `/v1/chat/completions`) whose engine you can
-read in an afternoon (~1.7k lines in `src/inferscale`). It runs on CUDA, Apple MPS or CPU.
+<sub>Real recording: `curl -N` against InferScale serving Qwen2.5-0.5B-Instruct on Apple MPS. Raw SSE lines are abbreviated for width (`id` elided) and playback is slowed ~2.5x; the whole stream took 0.83 s.</sub>
+
+| | |
+|---|---|
+| **Manual decoding** | own prefill → sample → decode loop over `model(...)`; no `generate()` in the runtime |
+| **Batching** | FIFO scheduler, bounded queue with backpressure (429), batched token-by-token decode with early row eviction |
+| **KV caching** | standard Hugging Face KV cache owned per batch behind a swappable `BatchState` interface |
+| **OpenAI-compatible API** | `/v1/chat/completions` and `/v1/completions`, JSON + SSE streaming, `usage`, cancellation on disconnect |
+| **Observability** | Prometheus metrics (TTFT, TPOT, batch size, forward time), structured logs, benchmark client |
+
+```bash
+pip install -e ".[dev]"
+inferscale serve --model Qwen/Qwen2.5-0.5B-Instruct     # or: --model builtin:tiny (offline smoke test)
+curl -N localhost:8000/v1/chat/completions -H 'content-type: application/json' \
+  -d '{"messages":[{"role":"user","content":"Hi!"}],"stream":true}'
+```
+
+Runs on CUDA, Apple MPS or CPU. About 1.7k lines in `src/inferscale`; the engine is meant to be read.
+**Honest scope:** this is an educational runtime, not a vLLM replacement. v0.1 does dynamic batching, **not** continuous batching, and has no PagedAttention ([details](#what-inferscale-is-not)).
+
+```mermaid
+flowchart LR
+    C([Client]) -->|HTTP / SSE| API
+    subgraph InferScale
+        direction LR
+        API[FastAPI<br/>routes + schemas] -->|submit / cancel| ENG[InferenceEngine<br/>async loop]
+        ENG <-->|admit, next_batch| SCH[Scheduler<br/>FIFO + backpressure]
+        ENG -->|logits| SMP[Sampler<br/>greedy / temp / top-p]
+        ENG -->|prefill / decode| RUN[ModelRunner<br/>left-pad + KV cache]
+        ENG -.->|token events| API
+    end
+    RUN --> PT[PyTorch + Transformers]
+    PT --> DEV[(CPU / MPS / CUDA)]
+```
 
 ## Why?
 
 Most people meet LLM serving through `model.generate()` or a large framework. InferScale
-exists to show what sits in between: how a request becomes a batch, why prefill and decode
-differ, who owns the KV cache, and what to measure. It is a learning and experimentation
-vehicle, not a competitor to production servers.
+shows what sits in between: how a request becomes a batch, why prefill and decode differ, who
+owns the KV cache, and what to measure. Transformers is used only for model and tokenizer
+loading and the forward pass.
 
 ## Features
 
@@ -44,20 +77,7 @@ vehicle, not a competitor to production servers.
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    C[Client] --> A[FastAPI routes<br/>api/]
-    A -->|submit / cancel| E[InferenceEngine<br/>engine/engine.py]
-    E --> Q[Scheduler: FIFO queue<br/>engine/scheduler.py]
-    Q -->|batch| E
-    E -->|prefill / decode<br/>worker thread| R[ModelRunner<br/>model/runner.py]
-    E --> S[Sampler<br/>engine/sampler.py]
-    R --> T[PyTorch + Transformers]
-    T --> D[CPU / MPS / CUDA]
-    E -.->|events via asyncio.Queue| A
-```
-
-Dependency direction is `api → engine → model`. The API layer never calls `model(...)`;
+See the diagram at the top. Dependency direction is `api → engine → model`. The API layer never calls `model(...)`;
 the engine never imports FastAPI. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Request lifecycle
